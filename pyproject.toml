@@ -1,17 +1,16 @@
 [project]
-name = "movie-discovery"
+name = "311-agent"
 version = "0.1.0"
-description = "An agentic movie discovery tool that leverages LangChain, OpenAI, and other libraries to provide personalized movie recommendations based on user preferences and interactions."
+description = "An agentic 311 intake assistant that turns a resident's plain-language message into the right request type and department."
 readme = "README.md"
 requires-python = "==3.12.3"
 dependencies = [
-    "chromadb>=1.5.9",
-    "datasets>=5.0.1",
     "fastembed>=0.9.0",
     "gradio>=6.17.3",
     "huggingface-hub>=0.33.4,<1.0.0",
     "ipykernel>=7.4.0",
     "ipywidgets>=8.1.9",
+    "lancedb>=0.40.0",
     "langchain-huggingface>=1.2.3",
     "langchain-text-splitters>=1.1.3",
     "langfuse>=5.0.2",

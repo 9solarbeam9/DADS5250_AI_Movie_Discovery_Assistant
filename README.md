@@ -1,14 +1,15 @@
-# DADS5250_AI_Movie_Discovery_Assistant
-AI powered movie recommendation assistant
+# Boston 311 Intake Assistant
+
+Staffing plan and AI intake assistant for four City of Boston 311 departments.
 
 ## Layout
 
 ```
 .
 |-- app.py                  entry point, launches the UI
-|-- agents/recommender/     LangGraph RAG agent
-|-- db/                     catalog loading and Chroma index
-|-- notebooks/              data exploration
+|-- agents/intake/          LangGraph RAG agent
+|-- db/                     LanceDB embedding function and request type search
+|-- notebooks/              data ingestion and analysis
 |-- scripts/                bootstrap installers
 `-- ui/                     Gradio chat app
 ```
@@ -18,28 +19,28 @@ AI powered movie recommendation assistant
 ```mermaid
 flowchart LR
     User --> UI["ui/gradio_app.py"]
-    UI --> Agent["agents/recommender/agent.py"]
-    Agent --> Index["db/movie_index.py"]
-    Index --> Chroma[("data/chroma")]
+    UI --> Agent["agents/intake/agent.py"]
+    Agent --> Search["db/request_types.py"]
+    Search --> Lance[("data/lancedb")]
     Agent --> LLM["OpenRouter LLM"]
-    HF["Hugging Face catalog"] -->|"db/catalog.py, one-time build"| Chroma
+    CSV["Boston 311 CSVs"] -->|"notebooks/311-data-processing.ipynb"| Lance
 ```
 
-In each chat turn, Gradio passes the visible history to the agent. The agent searches Chroma with everything the user has said so far, then asks the LLM to recommend from those results.
+In each chat turn, Gradio passes the visible history to the agent. The agent searches the request types with everything the user has said so far, then asks the LLM to pick the type, department and queue from those results.
 
 ```mermaid
 sequenceDiagram
     actor User
     participant UI as Gradio
     participant Agent as LangGraph agent
-    participant Chroma
+    participant Lance as LanceDB
     participant LLM as OpenRouter
     User->>UI: message
     UI->>Agent: ask(message, history)
-    Agent->>Chroma: retrieve, search(user turns, k=10)
-    Chroma-->>Agent: top 10 movies
-    Agent->>LLM: generate, prompt + movies + history
-    LLM-->>Agent: recommendations
+    Agent->>Lance: retrieve, search(user turns, k=10)
+    Lance-->>Agent: top 10 request types
+    Agent->>LLM: generate, prompt + request types + history
+    LLM-->>Agent: routing
     Agent-->>UI: reply
     UI-->>User: reply
 ```
@@ -82,13 +83,9 @@ Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
 ```
 
-### 3. Build the movie index
+### 3. Build the 311 database
 
-Downloads the movie catalog from Hugging Face, embeds it into `data/chroma`, then runs a few test searches. A clean build took 30 minutes on a laptop CPU in power-saving mode. An interrupted build resumes where it stopped, and later runs skip the build.
-
-```bash
-uv run python -m db.movie_index
-```
+Open `notebooks/311-data-processing.ipynb`, select the `.venv` kernel and run all cells. It downloads the 2023 and 2024 request files (about 180 MB each) into `data/`, then writes the `requests` and `request_types` tables to `data/lancedb`. Later runs reuse the downloaded files.
 
 ## Run
 

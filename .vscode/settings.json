@@ -1,4 +1,5 @@
 {
+    "jupyter.notebookFileRoot": "${workspaceFolder}",
     "python.analysis.enablePytestSupport": true,
     "python.analysis.exclude": [
         "${workspaceFolder}/DADS5250-GenAI/*",

@@ -1,18 +1,12 @@
-import os
-
-from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, convert_to_openai_messages
 from langgraph.graph import START, MessagesState, StateGraph
-from openai import OpenAI
 
-from db.movie_index import search
+from core.llm import MODEL, client
+from db.request_types import search
 
-load_dotenv(override=True)
-MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-client = OpenAI()
-
-PROMPT = """You are a friendly movie recommender. Suggest up to 5 movies from the list below that fit the user's taste,
-with one line each on why. Only recommend movies from this list.
+PROMPT = """You are a Boston 311 intake assistant. Pick the request type below that best matches the resident's problem,
+and reply with its type, department and queue. If none fits or the message is too vague, ask one short question instead.
+Only use request types from this list.
 
 {context}"""
 
@@ -25,7 +19,7 @@ def retrieve(state: State) -> dict:
     # joins every user turn into one query, add an LLM query rewrite if follow-ups drift
     query = " ".join(m.text for m in state["messages"] if m.type == "human")
     hits = search(query, k=10)
-    return {"context": "\n".join(f"- {h.title} ({h.year}), {', '.join(h.genres)}: {h.overview}" for h in hits.itertuples())}
+    return {"context": "\n".join(f"- {h.type} ({h.reason}, {h.subject}): {h.department_name} ({h.department}), queue {h.queue}" for h in hits.itertuples())}
 
 
 def generate(state: State) -> dict:

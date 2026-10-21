@@ -220,5 +220,11 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Excludes chromadb database files
+# Local tooling, docs and data
+.claude/
+CLAUDE.md
+.claudeignore
+.gitignore
+docs/
+
 data/
