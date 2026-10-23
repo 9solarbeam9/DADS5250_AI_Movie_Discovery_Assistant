@@ -1,14 +1,33 @@
+from gradio import on
 from langchain_core.messages import AIMessage, HumanMessage, convert_to_openai_messages
 from langgraph.graph import START, MessagesState, StateGraph
 
 from core.llm import MODEL, client
 from db.request_types import search
 
-PROMPT = """You are a Boston 311 intake assistant. Pick the request type below that best matches the resident's problem,
-and reply with its type, department and queue. If none fits or the message is too vague, ask one short question instead.
-Only use request types from this list.
+from core.llm import MODEL, parse
+from core.models import Classification
 
-{context}"""
+import pandas as pd
+from db.request_types import search
+
+PROMPT = """You are a Boston 311 intake assistant. From the candidate request types below, pick the single best match for the resident's message.
+
+Rules:
+- Only choose a type, department and queue from the provided list of request types.
+- Set confidence to a number between 0.0 and 1.0, where 1.0 is very confident and 0.0 is not confident at all.
+- If the message is vaue or could fit several types, set confidence below 0.6 and provide one short clarifying question to ask the resident.
+- If the message is clear and you are sure it fits a single type, set confidence above 0.6 and leave clarifying_question empty (null).
+
+Cadidate request types:
+{context} """
+
+
+# """You are a Boston 311 intake assistant. Pick the request type below that best matches the resident's problem,
+# and reply with its type, department and queue. If none fits or the message is too vague, ask one short question instead.
+# Only use request types from this list.
+
+# {context}"""
 
 
 class State(MessagesState):
@@ -19,15 +38,122 @@ def retrieve(state: State) -> dict:
     # joins every user turn into one query, add an LLM query rewrite if follow-ups drift
     query = " ".join(m.text for m in state["messages"] if m.type == "human")
     hits = search(query, k=10)
-    return {"context": "\n".join(f"- {h.type} ({h.reason}, {h.subject}): {h.department_name} ({h.department}), queue {h.queue}" for h in hits.itertuples())}
+    return {
+        "context": "\n".join(
+            f"- {h.type} ({h.reason}, {h.subject}): {h.department_name} ({h.department}), queue {h.queue}"
+            for h in hits.itertuples()
+        )
+    }
 
 
 def generate(state: State) -> dict:
-    reply = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "system", "content": PROMPT.format(context=state["context"])}, *convert_to_openai_messages(state["messages"])],
-    )
-    return {"messages": [AIMessage(reply.choices[0].message.content)]}
+    # Guard against bad input
+    system = PROMPT.format(context=state["context"])
+
+    content = state["messages"][-1].content if state["messages"] else ""
+    user_text = content if isinstance(content, str) else str(content)
+    user_text = user_text.strip()
+
+    if not user_text:
+        return {
+            "messages": [AIMessage("Please describe the problem you'd like to report.")]
+        }
+    if len(user_text) > 2000:
+        return {
+            "messages": [
+                AIMessage(
+                    "Your message is too long. Please summarize it to 2000 characters or less."
+                )
+            ]
+        }
+
+    system = PROMPT.format(context=state["context"])
+
+    # Retry once on API errors
+    result = None
+    for attempt in range(2):
+        try:
+            result = parse(Classification, system, user_text)
+            break
+        except Exception:
+            if attempt == 1:
+                result = None
+    # Fall back to top search hit if the LLM fails
+    if result is None:
+        hits = search(user_text, k=1)
+        if len(hits):
+            row = hits.iloc[0]
+            reply_text = (
+                f"I couldn't confirm with the model, but the closest match is:\n"
+                f"- Type: {row.type}\n"
+                f"- Department: {row.department}\n"
+                f"- Queue: {row.queue}\n"
+                f"(unconfirmed)"
+            )
+        else:
+            reply_text = (
+                "Sorry, I couldn't find a matching request type. Please try rephrasing."
+            )
+        return {"messages": [AIMessage(reply_text)]}
+
+    THRESHOLD = 0.6
+    if result.confidence >= THRESHOLD or not result.clarifying_question:
+        hits = search(result.type, k=1)
+        row = hits.iloc[0] if len(hits) else None
+
+        median = (
+            f"{row.median_days_to_close:.0f} days"
+            if row is not None and pd.notna(row.median_days_to_close)
+            else "unknown"
+        )
+        on_time = (
+            f"{row.on_time_rate_2024:.0%}"
+            if row is not None and pd.notna(row.on_time_rate_2024)
+            else "unknown"
+        )
+
+        reply_text = (
+            f"I recommend: \n"
+            f"Type: {result.type}\n"
+            f"Department: {result.department}\n"
+            f"Queue: {result.queue}\n"
+            f"Confidence: {result.confidence:.0%}\n"
+            f"Typical days to close: {median}\n"
+            f"On-time rate (2024): {on_time}"
+        )
+    # else:
+    # reply_text = result.clarifying_question
+
+    # commenting out the simple reply text. Replaced with a version that looks up the stats
+    # reply_text = (
+    # f"I recommend: \n"
+    # f"Type: {result.type}\n"
+    # f"Department: {result.department}\n"
+    # f"Queue: {result.queue}\n"
+    # f"Confidence: {result.confidence: .0%}"
+    # )
+    else:
+        reply_text = f"Could you clarify: {result.clarifying_question}"
+
+    return {"messages": [AIMessage(reply_text)]}
+
+    # reply_text = (
+    # f"Type: {result.type}\n"
+    # f"Department: {result.department}\n"
+    # f"Queue: {result.queue}\n"
+    # f"Confidence: {result.confidence}\n"
+    # )
+    # if result.clarifying_question:
+    # reply_text += f"Clarifying Question: {result.clarifying_question}"
+    # return {"messages": [AIMessage(reply_text)]}
+
+    # reply = client.chat.completions.create(
+    # model=MODEL,
+    # messages=[{"role": "system", "content": PROMPT.format(context=state["context"])}, *convert_to_openai_messages(state["messages"])],
+    # )
+
+
+# return {"messages": [AIMessage(reply.choices[0].message.content)]}
 
 
 graph = (
@@ -50,5 +176,8 @@ if __name__ == "__main__":
     history = []
     while question := input("\nYou: ").strip():
         answer = ask(question, history)
-        history += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        history += [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer},
+        ]
         print(f"\nBot: {answer}")
