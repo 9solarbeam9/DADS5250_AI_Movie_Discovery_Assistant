@@ -1,6 +1,7 @@
 import gradio as gr
 
-from agents.intake.agent import MODEL, ask
+from agents.intake.agent import ask
+from core.llm import MODEL
 
 
 def chat(message: str, history: list[dict]) -> str:
