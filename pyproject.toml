@@ -21,6 +21,7 @@ dependencies = [
     "pandas>=3.0.1",
     "pip>=26.2.1",
     "pyarrow>=26.0.0",
+    "pydantic>=2.14.1",
     "python-dotenv>=1.2.4",
     "tiktoken>=0.14.0",
 ]

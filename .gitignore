@@ -212,19 +212,6 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
-# Streamlit
-.streamlit/secrets.toml
-
 # Local tooling, docs and data
-.claude/
-CLAUDE.md
-.claudeignore
-.gitignore
-docs/
-
 data/
+docs/
